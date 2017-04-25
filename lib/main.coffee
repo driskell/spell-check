@@ -1,7 +1,6 @@
 {Task} = require 'atom'
 
 SpellCheckView = null
-spellCheckViews = {}
 
 module.exports =
   activate: ->
@@ -9,11 +8,6 @@ module.exports =
     # what is actually in the background.
     handlerFilename = require.resolve './spell-check-handler'
     @task ?= new Task handlerFilename
-
-    # Set up our callback to track when settings changed.
-    that = this
-    @task.on "spell-check:settings-changed", (ignore) ->
-      that.updateViews()
 
     # Since the spell-checking is done on another process, we gather up all the
     # arguments and pass them into the task. Whenever these change, we'll update
@@ -67,11 +61,6 @@ module.exports =
       spellCheckView = new SpellCheckView(editor, @task, this, => @getInstance @globalArgs)
 
       # save the {editor} into a map
-      editorId = editor.id
-      spellCheckViews[editorId] = {}
-      spellCheckViews[editorId]['view'] = spellCheckView
-      spellCheckViews[editorId]['active'] = true
-      spellCheckViews[editorId]['editor'] = editor
       @viewsByEditor.set editor, spellCheckView
 
   deactivate: ->
@@ -81,12 +70,6 @@ module.exports =
     @task = null
     @commandSubscription.dispose()
     @commandSubscription = null
-
-    # Clear out the known views.
-    for editorId of spellCheckViews
-      {view} = spellCheckViews[editorId]
-      view.destroy()
-    spellCheckViews = {}
 
     # While we have WeakMap.clear, it isn't a function available in ES6. So, we
     # just replace the WeakMap entirely and let the system release the objects.
@@ -115,12 +98,6 @@ module.exports =
   misspellingMarkersForEditor: (editor) ->
     @viewsByEditor.get(editor).markerLayer.getMarkers()
 
-  updateViews: ->
-    for editorId of spellCheckViews
-      view = spellCheckViews[editorId]
-      if view['active']
-        view['view'].updateMisspellings()
-
   sendGlobalArgs: ->
     @task.send {type: "global", global: @globalArgs}
 
@@ -141,13 +118,5 @@ module.exports =
   toggle: ->
     if not atom.workspace.getActiveTextEditor()
       return
-    editorId = atom.workspace.getActiveTextEditor().id
-
-    if spellCheckViews[editorId]['active']
-      # deactivate spell check for this {editor}
-      spellCheckViews[editorId]['active'] = false
-      spellCheckViews[editorId]['view'].unsubscribeFromBuffer()
-    else
-      # activate spell check for this {editor}
-      spellCheckViews[editorId]['active'] = true
-      spellCheckViews[editorId]['view'].subscribeToBuffer()
+    editor = atom.workspace.getActiveTextEditor()
+    @viewsByEditor.get(editor).toggle()
